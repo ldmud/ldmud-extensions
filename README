@@ -1,0 +1,28 @@
+This is a collection of unofficial patches/extensions/packages for
+LDMud - an LPC Gamedriver.
+
+Although this repository is hosted and organized by the maintainers of LDMud,
+please keep in mind: these patches may be only cursorily tested or even not at
+all. If they are tested, this is done by their contributors and their users.
+They may work with your specific version/release of LDMud or they may not.
+They may introduce instabilities, crashes or weird behaviour to LDMud.
+
+We (the maintainers of LDMud) usually can't offer support for these packages
+here and will probably have no time to debug crashes in LDMud if patched with
+the patches contained here.
+
+Therefore: USE AT YOUR OWN RISK.
+
+
+License issues
+==============
+The repository does not enforce a specific license. Each patch may have their
+own license/conditions depending on the contributors / copyright holders - as
+long as it is an open source license as defined by the Open Source Initiative.
+For a list of candidates, go to: http://www.opensource.org/licenses
+
+However, if a patch should ever be included in the official driver, it is
+required to be licensed under the 2-clause BSD license as given in 
+COPYING.template. Therefore we strongly encourage contributors to use this 
+license for all patches contributed here.
+
