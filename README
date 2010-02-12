@@ -1,28 +1,50 @@
-This is a collection of unofficial patches/extensions/packages for
-LDMud - an LPC Gamedriver.
+LDMud-extensions is a collection of unofficial patches/extensions/packages for
+LDMud (an LPC Gamedriver).
 
+It is planned for contributions we are not yet sure about popularity or impact
+on the rest of the driver source. This can also be patches from/for specific
+muds or some ideas users want to play with, so that not everybody has to
+re-invent the wheel.
+
+The idea is that everybody can fork (clone) this repository and work on it
+(add patches, improve or test them, write tests for our testsuite or
+ documentation etc). Then we either pull in changes of the others or give
+people we know for a longer time write-access to this repository. This might
+help us to share some work in developing new optional packages and after some
+time they might migrate into the LDMud sources, depending on popularity,
+complexity, maturity etc.
+But we think, even patches written for specific Muds which might never be
+included in the official sources, may be of help to other users.
+
+Therefore we ask all LDMud users who have own patches for LDMud and think,
+that they may be of interest or help to somebody else, to contribute them
+here. Just clone/fork this repository, add your patches to a subdirectory
+(preferably with some sort of readme) and ask us to pull.
+
+Disclaimer
+==========
 Although this repository is hosted and organized by the maintainers of LDMud,
 please keep in mind: these patches may be only cursorily tested or even not at
 all. If they are tested, this is done by their contributors and their users.
 They may work with your specific version/release of LDMud or they may not.
 They may introduce instabilities, crashes or weird behaviour to LDMud.
 
-We (the maintainers of LDMud) usually can't offer support for these packages
+We (the maintainers of LDMud) usually can’t offer support for these packages
 here and will probably have no time to debug crashes in LDMud if patched with
 the patches contained here.
 
 Therefore: USE AT YOUR OWN RISK.
 
-
 License issues
 ==============
 The repository does not enforce a specific license. Each patch may have their
-own license/conditions depending on the contributors / copyright holders - as
-long as it is an open source license as defined by the Open Source Initiative.
-For a list of candidates, go to: http://www.opensource.org/licenses
+own license/conditions depending on the contributors / copyright holders – as
+long as it is an open source license as defined by the Open Source Initiative
+(for a closes source license, this repo would not make sense…). For a list of
+candidates, go to: http://www.opensource.org/licenses
 
 However, if a patch should ever be included in the official driver, it is
-required to be licensed under the 2-clause BSD license as given in 
-COPYING.template. Therefore we strongly encourage contributors to use this 
+required to be licensed under the 2-clause BSD license as given in
+COPYING.template. Therefore we strongly encourage contributors to use this
 license for all patches contributed here.
 
