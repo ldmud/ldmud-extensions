@@ -23,11 +23,11 @@ here. Just clone/fork this repository, add your patches to a subdirectory
 
 Disclaimer
 ==========
-Although this repository is hosted and organized by the maintainers of LDMud,
-please keep in mind: these patches may be only cursorily tested or even not at
-all. If they are tested, this is done by their contributors and their users.
-They may work with your specific version/release of LDMud or they may not.
-They may introduce instabilities, crashes or weird behaviour to LDMud.
+Although this repository is organized and maintained by the maintainers of
+LDMud, please keep in mind: these patches may be only cursorily tested or even
+not at all. If they are tested, this is done by their contributors and their
+users. They may work with your specific version/release of LDMud or they may
+not. They may introduce instabilities, crashes or weird behaviour to LDMud.
 
 We (the maintainers of LDMud) usually can’t offer support for these packages
 here and will probably have no time to debug crashes in LDMud if patched with
