@@ -1,0 +1,121 @@
+From a5a8447b36958c268304cedd647adcdb2aae9a64 Mon Sep 17 00:00:00 2001
+From: Largo <em.opensource@googlemail.com>
+Date: Sat, 13 Feb 2010 10:16:57 +0100
+Subject: [PATCH] Applied patch from Largo for shuffle_array().
+
+Largo supplied a patch for randomizing array contents. shuffle_array() will
+return a new array with the same elements in random order (if the size of the
+array is > 2).
+
+Signed-off-by: zesstra <zesstra@zesstra.de>
+---
+ src/array.c   |   51 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/array.h   |    3 ++-
+ src/func_spec |    1 +
+ 3 files changed, 54 insertions(+), 1 deletions(-)
+
+diff --git a/src/array.c b/src/array.c
+index 2397623..63e1906 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -69,6 +69,7 @@
+ #include "mempools.h"
+ #include "mstrings.h"
+ #include "object.h"
++#include "random.h"
+ #include "stdstrings.h"
+ #include "simulate.h"
+ #include "svalue.h"
+@@ -2859,6 +2860,56 @@ f_transpose_array (svalue_t *sp)
+     return sp;
+ } /* f_transpose_array() */
+ 
++/*-------------------------------------------------------------------------*/
++svalue_t *
++f_shuffle_array (svalue_t *sp)
++
++/* EFUN shuffle_array()
++ *
++ *   mixed *shuffle_array (mixed *arr);
++ *
++ * shuffle_array ( ({1,2,3}) )
++ *              => ({3,1,2})
++ *              => ({2,3,1})
++ *              => ...
++ *
++ * shuffle_array() applied to an array results in an array of
++ * randomly arranged elements.
++ * Note: If <arr> has <= 2 elements, <arr> will be returns instead of a copy.
++ */
++
++{
++    vector_t *v;  /* Input vector */
++    vector_t *w;  /* Output vector */
++    size_t size;  /* size of <v> */
++    size_t i;
++    svalue_t *pos, *next, tmp;
++
++    /* Get and test the arguments */
++    v = sp->u.vec;
++
++    if ( (size = VEC_SIZE(v)) < 2)
++        return sp;
++
++    /* Allocate and fill the result vector */
++    w = slice_array(v, 0, size - 1);
++    free_array(v);
++
++    /* shuffle the array elements */
++    for (pos = w->item, i = size; i-- > 0; ++pos)
++    {
++        next = w->item + random_number(size - i);
++        tmp = *next;
++        transfer_svalue_no_free(next, pos);
++        transfer_svalue_no_free(pos, &tmp);
++    }
++
++    /* Clean up and return the result */
++    put_array(sp, w);
++
++    return sp;
++} /* f_shuffle_array() */
++
+ /*=========================================================================*/
+ 
+ /* EFUN unique_array()
+diff --git a/src/array.h b/src/array.h
+index 6d93cff..e6b8ee5 100644
+--- a/src/array.h
++++ b/src/array.h
+@@ -17,7 +17,7 @@
+  */
+ 
+ struct vector_s {
+-    p_int size;        /* Number of contained elements */
++    size_t size;       /* Number of contained elements */
+     p_int ref;         /* Number of references */
+ #ifdef DEBUG
+     p_int extra_ref;   /* Second refcount, used to check .ref. */
+@@ -101,6 +101,7 @@ extern svalue_t *x_filter_array(svalue_t *sp, int num_arg);
+ extern svalue_t *v_sort_array(svalue_t *sp, int num_arg);
+ extern svalue_t *x_map_array(svalue_t *sp, int num_arg);
+ extern svalue_t *f_transpose_array(svalue_t *sp);
++extern svalue_t *f_shuffle_array(svalue_t *sp);
+ 
+ extern svalue_t *v_filter_objects(svalue_t *sp, int num_arg);
+ extern svalue_t *v_map_objects(svalue_t *sp, int num_arg);
+diff --git a/src/func_spec b/src/func_spec
+index 34a3ca0..d562e37 100644
+--- a/src/func_spec
++++ b/src/func_spec
+@@ -420,6 +420,7 @@ mixed  *filter_objects(mixed *, string, ...);
+ mixed  *map_objects(mixed *, string, ...);
+ mixed  *sort_array(mixed *|mixed *&, string|closure, ...);
+ mixed  *transpose_array(mixed *);
++mixed  *shuffle_array(mixed *);
+ mixed  *unique_array(mixed *, string|closure, ...);
+ 
+ mixed   filter(mapping|mixed *|string, string|closure|mapping, ...);
+-- 
+1.6.6.1
+

@@ -1,0 +1,17 @@
+Contribution from Largo for randomizing array contents.
+
+EFUN shuffle_array()
+
+  mixed *shuffle_array (mixed *arr);
+
+  shuffle_array ( ({1,2,3}) )
+                => ({3,1,2})
+                => ({2,3,1})
+                => ...
+
+  shuffle_array() applied to an array results in an array of
+  randomly arranged elements.
+  Note: If <arr> has <= 2 elements, <arr> will be returns instead of a copy.
+
+Applies to r2846 / f120347feb47b0464f47476aa71d97e845fe4670 (3.5.x, trunk)
+
