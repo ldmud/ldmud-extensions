@@ -1,0 +1,27 @@
+/*  A new sscanf() like efun   /Gwendolyn@nannymud.lysator.liu.se 2000  */
+
+--------------------------------------------------------------
+
+NAME
+	xscanf - match strings and return an array of matched
+
+SYNOPSIS
+	mixed *xscanf(string str, string fmt)
+
+DESCRIPTION
+	This one is similar to sscanf in that it match a string
+	against a pattern. The most important difference is that
+        instead	of taking a list of variables to put the values
+	in it returns the matched items in an array. Also it
+	recognizes some extra types:
+		%s - string
+		%d - decimal integer
+		%c - character (gives the char as an int)
+		%n - matched characters sofar
+		%o - octal integer
+		%x - hexadecimal integer
+	
+SEE ALSO
+ 	sscanf
+
+-----------------------------------------------------------
