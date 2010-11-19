@@ -1,0 +1,280 @@
+From eb74bc5d0c54f5f3e9aa5f7f1c96b74d658b7921 Mon Sep 17 00:00:00 2001
+From: zesstra <zesstra@zesstra.de>
+Date: Fri, 12 Feb 2010 15:50:21 +0100
+Subject: [PATCH] Imported JSON patch from Fippo.
+
+Fippo submitted a patch for adding JSON support at:
+http://mantis.bearnip.com/view.php?id=724
+---
+ src/autoconf/configure.in |   33 ++++++++++
+ src/config.h.in           |    5 ++
+ src/func_spec             |    5 ++
+ src/strfuns.c             |  142 +++++++++++++++++++++++++++++++++++++++++++++
+ src/strfuns.h             |    4 +
+ 5 files changed, 189 insertions(+), 0 deletions(-)
+
+diff --git a/src/autoconf/configure.in b/src/autoconf/configure.in
+index 5a37bf5..06df8e9 100644
+--- a/src/autoconf/configure.in
++++ b/src/autoconf/configure.in
+@@ -221,6 +221,7 @@ AC_MY_ARG_ENABLE(use-mccp,no,,[Enables MCCP support])
+ AC_MY_ARG_ENABLE(use-mysql,no,,[Enables mySQL support])
+ AC_MY_ARG_ENABLE(use-pgsql,no,,[Enables PostgreSQL support])
+ AC_MY_ARG_ENABLE(use-sqlite,no,,[Enables SQLite support])
++AC_MY_ARG_ENABLE(use-json,no,,[Enables JSON-C Support])
+ AC_MY_ARG_ENABLE(use-pcre,yes,,[Enables PCRE: no/yes])
+ AC_MY_ARG_ENABLE(use-xml,no,,[Enables XML support: no/xml2/iksemel/yes])
+ AC_MY_ARG_WITH(xml-path,,,[Optional location of the XML include/ and lib/ directory])
+@@ -438,6 +439,20 @@ else
+   xml_path="$with_xml_path"
+ fi
+ 
++AC_UPDATE_VAR(enable_use_json)
++if test "x$enable_use_json" = "x" || test "x$enable_use_json" = "xyes"; then
++  cdef_use_json="#define"
++  json_path=
++  enable_use_json="yes"
++elif test "x$enable_use_json" = "xno"; then
++  cdef_use_json="#undef"
++  json_path=
++else
++  cdef_use_json="#define"
++  json_path="$enable_use_json"
++  enable_use_json="yes"
++fi
++
+ AC_UPDATE_VAR(enable_use_tls)
+ if test "x$enable_use_tls" = "x" || test "x$enable_use_tls" = "xyes"; then
+   cdef_use_tls="#define"
+@@ -1780,6 +1795,23 @@ if test "$has_xml" = "no"; then
+ fi
+ 
+ 
++# --- JSON ---
++cdef_enable_use_json="#undef"
++AC_CHECK_HEADER(json/json.h,,[
++		enable_use_json=no
++		lp_cv_has_json=no
++		])
++
++# The system has the json include files - now search for the libraries.
++if test "x$enable_use_json" = "x" || test "x$enable_use_json" = "xyes"; then
++    AC_CHECK_LIB(json, main, [
++		 AC_DEFINE(HAS_JSON, 1, [Support JSON?])
++		 PKGLIBS="$PKGLIBS -ljson"
++		 lp_cv_has_json=yes
++		 cdef_use_json="#define"
++		 ])
++fi
++
+ # --- Check if we need zlib libraries for mccp ---
+ 
+ if test "x$enable_use_mccp" = "x" || test "x$enable_use_mccp" = "xyes"; then
+@@ -2680,6 +2712,7 @@ AC_SUBST(cdef_use_ipv6)
+ AC_SUBST(cdef_use_mysql)
+ AC_SUBST(cdef_use_pgsql)
+ AC_SUBST(cdef_use_sqlite)
++AC_SUBST(cdef_use_json)
+ AC_SUBST(cdef_use_xml)
+ AC_SUBST(cdef_use_alists)
+ AC_SUBST(cdef_use_mccp)
+diff --git a/src/config.h.in b/src/config.h.in
+index 0a4b23c..af79d8a 100644
+--- a/src/config.h.in
++++ b/src/config.h.in
+@@ -360,6 +360,11 @@
+  */
+ @cdef_use_sqlite@ USE_SQLITE
+ 
++/*Define this if you want JSON support (assuming that your host
++ * actually offers this.
++ */
++@cdef_use_json@ USE_JSON
++
+ /* Define this if you want alist support.
+  */
+ @cdef_use_alists@ USE_ALISTS
+diff --git a/src/func_spec b/src/func_spec
+index 34a3ca0..461392c 100644
+--- a/src/func_spec
++++ b/src/func_spec
+@@ -719,6 +719,11 @@ mixed  *tls_check_certificate(object, int default: F_CONST0);
+ 
+ #endif /* USE_TLS */
+ 
++#ifdef HAS_JSON
++string	json_serialize(mixed);
++mixed	json_parse(string);
++#endif /* HAS_JSON */
++
+ /* The following functions are optional and can be configured out.
+  */
+ 
+diff --git a/src/strfuns.c b/src/strfuns.c
+index e07e72b..c2932c1 100644
+--- a/src/strfuns.c
++++ b/src/strfuns.c
+@@ -1186,5 +1186,147 @@ x_map_string (svalue_t *sp, int num_arg)
+     return arg;
+ } /* x_map_string () */
+ 
++#ifdef HAS_JSON
++/* support for javascript object notation
++ * depends on the json-c library
++ * see http://www.json.org for more information
++ */
++#include <json/json.h>
++#include "array.h"
++
++svalue_t *
++ldmud_json_inner_parse (svalue_t *sp, struct json_object *val)
++{
++    if (is_error(val)) {
++	errorf("json_inner_parse: error");
++        /* NOTREACHED */
++        return sp;
++
++    }
++    if (val == NULL) {
++	/* TODO: I (fippo) am not sure, if this is a really good idea... */
++	put_number(sp, 0);
++	return sp;
++    }
++    switch(json_object_get_type(val)) {
++    case json_type_null:
++	put_number(sp, 0);
++	break;
++    case json_type_boolean:
++	put_number(sp, json_object_get_boolean(val));
++	break;
++    case json_type_double:
++        put_float(sp, json_object_get_double(val));
++	break;
++    case json_type_int:
++	put_number(sp, json_object_get_int(val));
++	break;
++    case json_type_string:
++        put_c_string(sp, json_object_get_string(val));
++	break;
++    case json_type_object:
++      {
++	mapping_t *m;
++	struct lh_entry *e;
++	char *key;
++	struct json_object *newval;
++
++	m = allocate_mapping(json_object_get_object(val)->count, 1);
++	for (e = json_object_get_object(val)->head; e ? (key = (char*)e->k, newval = (struct json_object *)e->v, e) : 0; e = e->next) {
++	    svalue_t mkey, *mval;
++	    put_c_string(&mkey, key);
++	    mval = get_map_lvalue(m, &mkey);
++	    free_svalue(&mkey);
++	    ldmud_json_inner_parse(mval, newval);
++	}
++	put_mapping(sp, m);
++	break;
++      }
++    case json_type_array:
++      {
++	vector_t *v;
++	struct array_list *a;
++	int size, i;
++	size = json_object_array_length(val);
++	v = allocate_array(size);
++	a = json_object_get_array(val);
++	for (i = 0; i < size; i++) {
++	    ldmud_json_inner_parse(&(v->item[i]), array_list_get_idx(a, i));
++	}
++	put_array(sp, v);
++	break;
++      }
++    }
++    return sp;
++}
++
++svalue_t *
++f_json_parse (svalue_t *sp) {
++    struct json_object *parsed;
++
++    parsed = json_tokener_parse(get_txt(sp->u.str));
++    free_svalue(sp);
++    ldmud_json_inner_parse (sp, parsed);
++    /* TODO: free the object */
++    return sp;
++}
++
++struct json_object *
++ldmud_json_inner_serialize (svalue_t *sp) {
++    struct json_object *val;
++    switch(sp->type) {
++    case T_NUMBER:
++	val = json_object_new_int(sp->u.number);
++	break;
++    case T_STRING:
++	val = json_object_new_string(get_txt(sp->u.str));
++	break;
++    case T_POINTER:
++      {
++	int i;
++	val = json_object_new_array();
++	for (i = VEC_SIZE(sp->u.vec) - 1; i >= 0; i--)
++	    json_object_array_put_idx(val, i,
++			ldmud_json_inner_serialize(&sp->u.vec->item[i]));
++	break;
++      }
++    case T_MAPPING:
++      {
++	int i;
++	val = json_object_new_object();
++	for (i = 0; i < MAP_SIZE(sp->u.map); i++)
++	    walk_mapping(sp->u.map, &ldmud_json_walker, val);
++	break;
++      }
++    case T_FLOAT:
++	val = json_object_new_double(READ_DOUBLE(sp));
++	break;
++    default: /* those are unimplemented */
++	val = json_object_new_object();
++	break;
++    }
++    return val;
++}
++
++void ldmud_json_walker(svalue_t *key, svalue_t *val, void *parent)
++{
++    struct json_object *obj = (struct json_object *)parent;
++    if (key->type != T_STRING)
++	errorf("json only serializes string keys\n");
++	/* NOTREACHED */
++    json_object_object_add(obj, get_txt(key->u.str),
++			   ldmud_json_inner_serialize(val));
++}
++
++
++svalue_t *
++f_json_serialize (svalue_t *sp) {
++    struct json_object *val;
++    val = ldmud_json_inner_serialize(sp);
++    free_svalue(sp);
++    put_c_string(sp, json_object_to_json_string(val));
++    return sp;
++}
++#endif /* HAS_JSON */
+ /*====================================================================*/
+ 
+diff --git a/src/strfuns.h b/src/strfuns.h
+index fc3d5db..dfc878d 100644
+--- a/src/strfuns.h
++++ b/src/strfuns.h
+@@ -41,4 +41,8 @@ extern string_t * intersect_strings (const string_t * left, const string_t * rig
+ extern svalue_t * x_map_string (svalue_t *sp, int num_arg);
+ extern svalue_t * x_filter_string (svalue_t *sp, int num_arg);
+ 
++#ifdef USE_JSON
++extern void ldmud_json_walker(svalue_t *key, svalue_t *val, void *parent);
++#endif
++
+ #endif /* STRFUNS_H_ */
+-- 
+1.7.2.3
+
