@@ -1,0 +1,32 @@
+lpc.vim is a syntax definition file for the programming language LPC.
+
+As there are different variants/dialects of LPC, this file is specially
+adapted to the syntax used by LDMud-3.5.x (https://ldmud.eu/)
+
+It includes many lfuns defined by the base mudlib of the MUD MorgenGrauen.
+
+Usage:
+  * Please install it either in the system-wide syntax/ directory
+    (e.g. /usr/share/vim/vim71/syntax)
+    or in
+    ~/.vim/syntax/
+  * Add to your .vimrc:
+      syntax on
+      autocmd BufNewFile,BufRead <mudlib-directory>/*.[c|h] set filetype=lpc
+  * It you don't use a MorgenGrauen-based mudlib, exchange the content of 
+    'syn keyword lpcEfun ...' with your own lfun list.
+
+The syntax file is compatible with VIM 7.0, 7.1.
+
+Further information about LPC:
+  * http://en.wikipedia.org/wiki/LPC_%28programming_language%29
+
+Authors:
+  * Adrian Holzwarth (holzw AT web.de) (original author)
+  * Christian Brunsch (chagall AT benares.de)
+  * Dominik Schäfer (github AT zesstra.de)
+
+License:
+lpc.vim is licensed under a Creative Commons Attribution-ShareAlike 3.0
+Unported License: http://creativecommons.org/licenses/by-sa/3.0/
+
