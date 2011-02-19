@@ -1,0 +1,10 @@
+This is a patch by Peng@FinalFrontier adding a JSON parser package to the
+driver.
+
+Submitted as https://ldmud.eu/mantis/view.php?id=724
+
+Peng@FF submitted this patch for adding their string compiler to the
+driver. As it is completely undocumented, we do not include it in our
+driver documentation, but add it to ldmud-extensions. Maybe someone
+will work on it there.
+
