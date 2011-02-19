@@ -1,0 +1,9 @@
+Added efun system() to execute commands on the host system.
+
+WARNING:
+************ NEVER EVER USE THIS ON A PUBLIC MUD! *******************
+
+This adds the possibility to execute arbitrary commands on the host
+system with the Mud user without any restrictions, any checks and any
+privilege violations.
+
