@@ -1,0 +1,1490 @@
+From 932fcfe2a78afdd7222c72c67911f6469addf972 Mon Sep 17 00:00:00 2001
+From: Zesstra <zesstra@zesstra.de>
+Date: Sat, 9 May 2015 16:37:42 +0200
+Subject: [PATCH] Re-introduces support for alists.
+
+This patch re-introduces the support for alists to the
+LDMud 3.5.x branch.
+
+This reverts most of commit 835949fed9a4cad96efdff2016b522783f383437,
+but keeps some of the changes in the documentation and ensures
+that the appropriate "deprecated" keywords are included in the
+documentation.
+---
+ doc/LPC/alists                 |  54 ++++
+ doc/driver/predefined          |   1 +
+ doc/efun.de/assoc.de           |  31 +++
+ doc/efun.de/insert_alist.de    |  28 ++
+ doc/efun.de/intersect_alist.de |  15 +
+ doc/efun.de/order_alist.de     |  36 +++
+ doc/efun/assoc                 |  48 ++++
+ doc/efun/insert_alist          |  37 +++
+ doc/efun/intersect_alist       |  20 ++
+ doc/efun/order_alist           |  35 +++
+ doc/obsolete/alists            |  55 ----
+ doc/obsolete/assoc             |  48 ----
+ doc/obsolete/insert_alist      |  37 ---
+ doc/obsolete/intersect_alist   |  20 --
+ doc/obsolete/order_alist       |  35 ---
+ src/Makefile.in                |   9 +-
+ src/array.c                    |  36 +++
+ src/array.h                    |   4 +
+ src/autoconf/configure.in      |   3 +
+ src/config.h.in                |   4 +
+ src/func_spec                  |  10 +
+ src/lex.c                      |   3 +
+ src/main.c                     |   3 +
+ src/pkg-alists.c               | 619 +++++++++++++++++++++++++++++++++++++++++
+ src/pkg-alists.h               |  17 ++
+ 25 files changed, 1011 insertions(+), 197 deletions(-)
+ create mode 100644 doc/LPC/alists
+ create mode 100644 doc/efun.de/assoc.de
+ create mode 100644 doc/efun.de/insert_alist.de
+ create mode 100644 doc/efun.de/intersect_alist.de
+ create mode 100644 doc/efun.de/order_alist.de
+ create mode 100644 doc/efun/assoc
+ create mode 100644 doc/efun/insert_alist
+ create mode 100644 doc/efun/intersect_alist
+ create mode 100644 doc/efun/order_alist
+ delete mode 100644 doc/obsolete/alists
+ delete mode 100644 doc/obsolete/assoc
+ delete mode 100644 doc/obsolete/insert_alist
+ delete mode 100644 doc/obsolete/intersect_alist
+ delete mode 100644 doc/obsolete/order_alist
+ create mode 100644 src/pkg-alists.c
+ create mode 100644 src/pkg-alists.h
+
+diff --git a/doc/LPC/alists b/doc/LPC/alists
+new file mode 100644
+index 0000000..dc04ca8
+--- /dev/null
++++ b/doc/LPC/alists
+@@ -0,0 +1,54 @@
++DEPRECATED - INOFFICIAL PATCH
++CONCEPT
++        alists
++
++LAST UPDATE
++        2 Mar 92 21:10:21 GMT
++
++AUTHOR
++        From: amylaar@mcshh.hanse.de (Joern Rennecke)
++        Subject: general documentation on alists
++
++DESCRIPTION
++        Alists provide a fast and convenient way to access data
++        associatively.
++
++        Alists are implemented as arrays of arrays, the first being
++        the array holding the keys, the others arrays holding
++        associated data. An empty alist is an array of empty arrays.
++
++        Note that the the dimensions of the arrays are used the other
++        way than in lisp to allow for faster searching.
++
++        Keys have to be of type integer, string or object. Types can
++        be mixed.
++
++        The search functions return an undefined value when another
++        list is given in place of a presorted key list.
++
++        A list with non-numeric keys retrieved by restore_object() has
++        to be readjusted by using order_alist(), especially after
++        reboot.
++
++        Deleting an entry can safely be done with exclude_array as
++        long as all associated data lists are treated like the key
++        array; index finding for such purposes can be done with assoc.
++
++        Typical applications: holding administrary information about
++        wizards, list of visitors in a pub, list of customers having
++        some sort of credit, information remembered about items etc.
++
++NOTE
++        The main use of alists, storing data associatively, is now
++        better performed by mappings. Alists are needed for more
++        extreme situations only.
++
++        Alists are available only if the driver is compiled with
++        alist support. In that case, __ALISTS__ is defined.
++
++HISTORY
++        LDMud 3.3 made alists an optional efun.
++
++SEE ALSO
++        mappings(LPC), order_alist(E), insert_alist(E), assoc(E),
++        transpose_array(E)
+diff --git a/doc/driver/predefined b/doc/driver/predefined
+index d6168ce..0a436a6 100644
+--- a/doc/driver/predefined
++++ b/doc/driver/predefined
+@@ -88,6 +88,7 @@ DESCRIPTION
+       __XML_DOM__ :   support for XML parsing.
+       __JSON__ :      support for JSON parsing/serializing.
+       __MCCP__:       support for MCCP http://www.randomly.org/projects/MCCP
++      __ALISTS__:     support for alists
+       __PCRE__:       support for PCRE
+       __TLS__:        support for TLS (internal)
+       __GNUTLS__:     if __TLS__: TLS support provided by GnuTLS.
+diff --git a/doc/efun.de/assoc.de b/doc/efun.de/assoc.de
+new file mode 100644
+index 0000000..17ce890
+--- /dev/null
++++ b/doc/efun.de/assoc.de
+@@ -0,0 +1,31 @@
++VERALTET - INOFFIZIELLER PATCH
++SYNOPSIS
++        int   assoc(mixed key, mixed *keys)
++        mixed assoc(mixed key, mixed *alist [, mixed fail])
++        mixed assoc(mixed key, mixed *keys, mixed *data [, mixed fail])
++
++BESCHREIBUNG
++        Alle drei Aufrufe suchen nach einem <key> in einem <alist> (einem
++        Array von zwei Arrays gleicher Groesse) oder in einem geordneten
++        Array <keys>. Der Versuch, in einem anderen Konstrukt zu suchen,
++        fuehrt zu einem unvorhersehbaren Ergebnis.
++
++        Komplexitaet: O(lg(n)), wobei <n> die Anzahl Keys ist.
++
++        1.  Form: Key-Suche
++            <key> wird im Array <keys> gesucht. Das Resultat ist der Index,
++            in dem <key> gefunden wurde. Wird <key> nicht gefunden, liefert
++            assoc() -1.
++
++        2.  Form: Suche in Alist.
++            <key> wird in der <alist> gesucht, das Resultat sind die Werte,
++            die zu <key> gehoeren, wenn <key> gefunden wird. Wenn <key> nicht
++            gefunden wird, wird 0 zurueck geliefert oder <fail>, falls
++            angegeben.
++
++        Damit das Sinn macht, muss <data> so geordnet sein, dass es zu <key>
++        passt. Diese Form der Suche ist deshalb vorwiegend fuer
++        multidimensionale Alists geeignet.
++
++SIEHE AUCH
++        alists(LPC), insert_alist(E), order_alist(E)
+diff --git a/doc/efun.de/insert_alist.de b/doc/efun.de/insert_alist.de
+new file mode 100644
+index 0000000..2cb2511
+--- /dev/null
++++ b/doc/efun.de/insert_alist.de
+@@ -0,0 +1,28 @@
++VERALTET - INOFFIZIELLER PATCH
++SYNOPSIS
++        mixed * insert_alist(mixed key, mixed data, ... , mixed *alist)
++        int     insert_alist(mixed key, mixed *keys)
++
++BESCHREIBUNG
++     1. Form: Einfuegen in eine Alist.
++        Der <key> und alle foglenden <data> Argumente werden in die Alist
++        eingefuegt. Wenn bereits ein Eintrag fuer <key> existiert, werden
++        nur die <data> Eintraege ersetzt. Natuerlich muss die Anzahl <data>
++        Argumente der Anzahl der Datenarrays in der Alist entsprechen.
++        Das Resultat dieser Operation ist die neue Alist.
++
++     2. Form: Einfuegen eines Keys
++        Der <key> wird in ein (geordnetes) Array von <keys> eingeordnet,
++        sodass nachfolgendes assoc()s schnell suchen koennen. Das Resultat
++        ist der Index, unter dem <key> eingefuegt oder bereits gefunden
++        wurde.
++
++ANMERKUNGEN
++        Wird mit String-Keys gearbeitet, kann der Index nach dem naechsten
++        Aufruf von insert_alist() nicht mehr gueltig sein.
++
++        Komplexitaet: O(lg(n) + a*n) fuer n gleich der Anzahl der Keys und
++        eine sehr kleine Konstante s (fuer Blockverschiebungen).
++
++SIEHE AUCH
++        alists(LPC), assoc(E), order_alist(E)
+diff --git a/doc/efun.de/intersect_alist.de b/doc/efun.de/intersect_alist.de
+new file mode 100644
+index 0000000..5354429
+--- /dev/null
++++ b/doc/efun.de/intersect_alist.de
+@@ -0,0 +1,15 @@
++VERALTET - INOFFIZIELLER PATCH
++SYNOPSIS
++        mixed * intersect_alist(mixed *list1, mixed *list2)
++
++BESCHREIBUNG
++        Liefert eine schnelle Schnittmenge von zwei Alist Key-Vektoren (NICHT
++        von zwei vollstaendigen Alists). Der Operator '&' erzeugt Schnittmengen
++        von Arrays im Allgemeinen.
++
++BEISPIELE
++        new_list = intersect_alist(list1, list2);
++
++SIEHE AUCH
++        filter_array(E), assoc(E), insert_alist(E), map_array(E),
++        member_array(E), order_alist(E), sort_array(E), unique_array(E)
+diff --git a/doc/efun.de/order_alist.de b/doc/efun.de/order_alist.de
+new file mode 100644
+index 0000000..3b11ce8
+--- /dev/null
++++ b/doc/efun.de/order_alist.de
+@@ -0,0 +1,36 @@
++VERALTET - INOFFIZIELLER PATCH
++SYNOPSIS
++        mixed * order_alist(mixed *keys, mixed *data, ...)
++        mixed * order_alist(mixed *list)
++
++BESCHREIBUNG
++        Diese Funktion erzeugt eine Alist.
++
++        Gibt man zwei oder mehr Argumente an, muss das erste Argument
++        ein Array von Keys enthalten, die nachfolgenden Argumente
++        sind Arrays von Datenelementen. Alle <data> Argumente muessen
++        die gleiche Groesse (also die gleiche Anzahl Elemente) wie <keys>
++        haben.
++
++        Gibt man nur ein Argument <list> an, so muss es sich dabei um ein
++        Array handeln, das als erste Element ein Array von Keys und als
++        weitere Elemente Arrays mit Datenelementen enthaelt. Alle Elemente
++        von <list> muessen die gleiche Groesse haben.
++
++        order_alist() liefert ein Array zurueck, das das sortierte <keys>
++        Array und die gleich sortierten <data> Arrays enthaelt. Auf die
++        <data> Arrays wird die gleiche Permutation wie auf das <key> Array
++        angewendet.
++
++        Die Komplexitaet ist O(n*lg(n)+n*m), wobei n die Anzahl Elemente im
++        <keys> Array darstellt, m die Anzahl <data> Arrays + 1.
++
++        Die Dimensionen der Arrays werden gegenueber LISP genau umgekehrt
++        verwendet, um ein schnelleres Suchen zu ermoeglichen.
++
++        Keys muessen vom Typ Integer, String oder Object sein. Die Typen
++        koennen auch gemischt sein.
++
++SIEHE AUCH
++        alists(LPC), mappings(LPC), insert_alist(E), assoc(E),
++        transpose_array(E)
+diff --git a/doc/efun/assoc b/doc/efun/assoc
+new file mode 100644
+index 0000000..83a955a
+--- /dev/null
++++ b/doc/efun/assoc
+@@ -0,0 +1,48 @@
++DEPRECATED - INOFFICIAL PATCH
++SYNOPSIS
++        int   assoc(mixed key, mixed *keys)
++        mixed assoc(mixed key, mixed *alist [, mixed fail])
++        mixed assoc(mixed key, mixed *keys, mixed *data [, mixed fail])
++
++DESCRIPTION
++        All invocation forms search for a <key> in an <alist> (an array
++        of two equal-sized arrays) or in an ordered array <keys>.
++        An attempt to search in any other structure will yield an
++        unpredictable result.
++
++        Complexity: O(lg(n)) , where n is the number of keys.
++
++
++        1. Form: Key Search
++
++          <key> is searched in the array <keys>, result is the index at
++          which <key> was found. If it isn't found, -1 is returned.
++
++
++        2. Form: Alist Lookup
++
++          <key> is searched in the <alist>, result is the data associated
++          with <key> if it is found. If it isn't found, the result
++          will be 0, or <fail> if specified.
++
++
++        3. Form: Ordered List Lookup
++
++          <key> is searched in the array <keys>, the index at which it
++          is found is as index into <data> to get the return value.
++          If <key> is not found, the reuslt will be 0, or <fail> if
++          specified.
++
++          For this to be useful, <data> has to be ordered so that
++          it matches <key>. This form of lookup is therefore used
++          primarily with multidimensional alists.
++
++        The function is available only if the driver is compiled with
++        alist support. In that case, __ALISTS__ is defined.
++
++HISTORY
++        LDMud 3.3 made this an optional efun.
++
++SEE ALSO
++        alists(LPC), insert_alist(E), order_alist(E)
++
+diff --git a/doc/efun/insert_alist b/doc/efun/insert_alist
+new file mode 100644
+index 0000000..597d686
+--- /dev/null
++++ b/doc/efun/insert_alist
+@@ -0,0 +1,37 @@
++DEPRECATED - INOFFICIAL PATCH
++SYNOPSIS
++        mixed * insert_alist(mixed key, mixed data..., mixed * alist)
++        int     insert_alist(mixed key, mixed * keys)
++
++DESCRIPTION
++        1. Form: Alist Insertion
++
++          The <key> and all following <data> values are inserted
++          into the <alist>. If an entry for <key> already exists
++          in the list, just the data values are replaced. The number
++          of <data> values must match the number of data arrays
++          in the alist, naturally.
++
++          Result is the updated <alist>.
++
++        2. Form: Key Insertion
++
++          Insert the <key> into the (ordered) array of <keys>, so that
++          subsequent assoc()s can perform quick lookups. Result is the
++          index at which <key> was inserted (or already found).
++
++          CAVEAT: when working with string keys, the index might no longer
++            be valid after the next call to insert_alist().
++
++        Complexity: O(lg(n) + a*n) where n is the number of keys and
++        s is a very small constant (for block move);
++
++        The function is available only if the driver is compiled with
++        alist support. In that case, __ALISTS__ is defined.
++
++HISTORY
++        LDMud 3.3 made this an optional efun.
++
++SEE ALSO
++        alists(LPC), assoc(E), order_alist(E)
++
+diff --git a/doc/efun/intersect_alist b/doc/efun/intersect_alist
+new file mode 100644
+index 0000000..78628f7
+--- /dev/null
++++ b/doc/efun/intersect_alist
+@@ -0,0 +1,20 @@
++DEPRECATED - INOFFICIAL PATCH
++SYNOPSIS
++        mixed * intersect_alist(mixed * list1, mixed * list2)
++
++DESCRIPTION
++        Does a fast set intersection on alist key vectors (NOT on full alists!).
++        The operator '&' does set intersection on arrays in general.
++
++        The function is available only if the driver is compiled with
++        alist support. In that case, __ALISTS__ is defined.
++
++EXAMPLES
++        new_list = intersect_alist(list1, list2);
++
++HISTORY
++        LDMud 3.3 made this an optional efun.
++
++SEE ALSO
++        filter_array(E), assoc(E), insert_alist(E), map_array(E),
++        member_array(E), order_alist(E), sort_array(E), unique_array(E)
+diff --git a/doc/efun/order_alist b/doc/efun/order_alist
+new file mode 100644
+index 0000000..c21a507
+--- /dev/null
++++ b/doc/efun/order_alist
+@@ -0,0 +1,35 @@
++DEPRECATED - INOFFICIAL PATCH
++SYNOPSIS
++        mixed * order_alist(mixed *keys, mixed *|void data, ...)
++
++DESCRIPTION
++        Creates an alist.
++
++        Either takes an array containing keys, and others containing
++        the associated data, where all arrays are to be of the same
++        length, or takes a single array that contains as first member
++        the array of keys and has an arbitrary number of other members
++        containing data, each of wich has to be of the same length as
++        the key array. Returns an array holding the sorted key array
++        and the data arrays; the same permutation that is applied to
++        the key array is applied to all data arrays.
++
++        Complexity is O(n * lg(n) + n * m), where n is the number of
++        elements in the key array and m is the number of data arrays + 1.
++
++        Note that the dimensions of the arrays are used the other
++        way than in lisp to allow for faster searching.
++
++        Keys have to be of type integer, string or object. Types can
++        be mixed.
++
++        The function is available only if the driver is compiled with
++        alist support. In that case, __ALISTS__ is defined.
++
++HISTORY
++        LDMud 3.3 made this an optional efun.
++
++SEE ALSO
++        alists(LPC), mappings(LPC), insert_alist(E), assoc(E),
++        transpose_array(E)
++
+diff --git a/doc/obsolete/alists b/doc/obsolete/alists
+deleted file mode 100644
+index 6aeab97..0000000
+--- a/doc/obsolete/alists
++++ /dev/null
+@@ -1,55 +0,0 @@
+-OBSOLETE
+-CONCEPT
+-        alists
+-
+-LAST UPDATE
+-        2 Mar 92 21:10:21 GMT
+-
+-AUTHOR
+-        From: amylaar@mcshh.hanse.de (Joern Rennecke)
+-        Subject: general documentation on alists
+-
+-DESCRIPTION
+-        Alists provide a fast and convenient way to access data
+-        associatively.
+-
+-        Alists are implemented as arrays of arrays, the first being
+-        the array holding the keys, the others arrays holding
+-        associated data. An empty alist is an array of empty arrays.
+-
+-        Note that the the dimensions of the arrays are used the other
+-        way than in lisp to allow for faster searching.
+-
+-        Keys have to be of type integer, string or object. Types can
+-        be mixed.
+-
+-        The search functions return an undefined value when another
+-        list is given in place of a presorted key list.
+-
+-        A list with non-numeric keys retrieved by restore_object() has
+-        to be readjusted by using order_alist(), especially after
+-        reboot.
+-
+-        Deleting an entry can safely be done with exclude_array as
+-        long as all associated data lists are treated like the key
+-        array; index finding for such purposes can be done with assoc.
+-
+-        Typical applications: holding administrary information about
+-        wizards, list of visitors in a pub, list of customers having
+-        some sort of credit, information remembered about items etc.
+-
+-NOTE
+-        The main use of alists, storing data associatively, is now
+-        better performed by mappings. Alists are needed for more
+-        extreme situations only.
+-
+-        Alists are available only if the driver is compiled with
+-        alist support. In that case, __ALISTS__ is defined.
+-
+-HISTORY
+-        LDMud 3.3 made alists an optional efun.
+-        LDMud 3.5 removed the support for alists.
+-
+-SEE ALSO
+-        mappings(LPC), order_alist(E), insert_alist(E), assoc(E),
+-        transpose_array(E)
+diff --git a/doc/obsolete/assoc b/doc/obsolete/assoc
+deleted file mode 100644
+index 864ed70..0000000
+--- a/doc/obsolete/assoc
++++ /dev/null
+@@ -1,48 +0,0 @@
+-OPTIONAL
+-SYNOPSIS
+-        int   assoc(mixed key, mixed *keys)
+-        mixed assoc(mixed key, mixed *alist [, mixed fail])
+-        mixed assoc(mixed key, mixed *keys, mixed *data [, mixed fail])
+-
+-DESCRIPTION
+-        All invocation forms search for a <key> in an <alist> (an array
+-        of two equal-sized arrays) or in an ordered array <keys>.
+-        An attempt to search in any other structure will yield an
+-        unpredictable result.
+-
+-        Complexity: O(lg(n)) , where n is the number of keys.
+-
+-
+-        1. Form: Key Search
+-
+-          <key> is searched in the array <keys>, result is the index at
+-          which <key> was found. If it isn't found, -1 is returned.
+-
+-
+-        2. Form: Alist Lookup
+-
+-          <key> is searched in the <alist>, result is the data associated
+-          with <key> if it is found. If it isn't found, the result
+-          will be 0, or <fail> if specified.
+-
+-
+-        3. Form: Ordered List Lookup
+-
+-          <key> is searched in the array <keys>, the index at which it
+-          is found is as index into <data> to get the return value.
+-          If <key> is not found, the reuslt will be 0, or <fail> if
+-          specified.
+-
+-          For this to be useful, <data> has to be ordered so that
+-          it matches <key>. This form of lookup is therefore used
+-          primarily with multidimensional alists.
+-
+-        The function is available only if the driver is compiled with
+-        alist support. In that case, __ALISTS__ is defined.
+-
+-HISTORY
+-        LDMud 3.3 made this an optional efun.
+-
+-SEE ALSO
+-        alists(LPC), insert_alist(E), order_alist(E)
+-
+diff --git a/doc/obsolete/insert_alist b/doc/obsolete/insert_alist
+deleted file mode 100644
+index f714de1..0000000
+--- a/doc/obsolete/insert_alist
++++ /dev/null
+@@ -1,37 +0,0 @@
+-OPTIONAL
+-SYNOPSIS
+-        mixed * insert_alist(mixed key, mixed data..., mixed * alist)
+-        int     insert_alist(mixed key, mixed * keys)
+-
+-DESCRIPTION
+-        1. Form: Alist Insertion
+-
+-          The <key> and all following <data> values are inserted
+-          into the <alist>. If an entry for <key> already exists
+-          in the list, just the data values are replaced. The number
+-          of <data> values must match the number of data arrays
+-          in the alist, naturally.
+-
+-          Result is the updated <alist>.
+-
+-        2. Form: Key Insertion
+-
+-          Insert the <key> into the (ordered) array of <keys>, so that
+-          subsequent assoc()s can perform quick lookups. Result is the
+-          index at which <key> was inserted (or already found).
+-
+-          CAVEAT: when working with string keys, the index might no longer
+-            be valid after the next call to insert_alist().
+-
+-        Complexity: O(lg(n) + a*n) where n is the number of keys and
+-        s is a very small constant (for block move);
+-
+-        The function is available only if the driver is compiled with
+-        alist support. In that case, __ALISTS__ is defined.
+-
+-HISTORY
+-        LDMud 3.3 made this an optional efun.
+-
+-SEE ALSO
+-        alists(LPC), assoc(E), order_alist(E)
+-
+diff --git a/doc/obsolete/intersect_alist b/doc/obsolete/intersect_alist
+deleted file mode 100644
+index 10bd90f..0000000
+--- a/doc/obsolete/intersect_alist
++++ /dev/null
+@@ -1,20 +0,0 @@
+-OPTIONAL
+-SYNOPSIS
+-        mixed * intersect_alist(mixed * list1, mixed * list2)
+-
+-DESCRIPTION
+-        Does a fast set intersection on alist key vectors (NOT on full alists!).
+-        The operator '&' does set intersection on arrays in general.
+-
+-        The function is available only if the driver is compiled with
+-        alist support. In that case, __ALISTS__ is defined.
+-
+-EXAMPLES
+-        new_list = intersect_alist(list1, list2);
+-
+-HISTORY
+-        LDMud 3.3 made this an optional efun.
+-
+-SEE ALSO
+-        filter_array(E), assoc(E), insert_alist(E), map_array(E),
+-        member_array(E), order_alist(E), sort_array(E), unique_array(E)
+diff --git a/doc/obsolete/order_alist b/doc/obsolete/order_alist
+deleted file mode 100644
+index 25ebfc7..0000000
+--- a/doc/obsolete/order_alist
++++ /dev/null
+@@ -1,35 +0,0 @@
+-OPTIONAL
+-SYNOPSIS
+-        mixed * order_alist(mixed *keys, mixed *|void data, ...)
+-
+-DESCRIPTION
+-        Creates an alist.
+-
+-        Either takes an array containing keys, and others containing
+-        the associated data, where all arrays are to be of the same
+-        length, or takes a single array that contains as first member
+-        the array of keys and has an arbitrary number of other members
+-        containing data, each of wich has to be of the same length as
+-        the key array. Returns an array holding the sorted key array
+-        and the data arrays; the same permutation that is applied to
+-        the key array is applied to all data arrays.
+-
+-        Complexity is O(n * lg(n) + n * m), where n is the number of
+-        elements in the key array and m is the number of data arrays + 1.
+-
+-        Note that the dimensions of the arrays are used the other
+-        way than in lisp to allow for faster searching.
+-
+-        Keys have to be of type integer, string or object. Types can
+-        be mixed.
+-
+-        The function is available only if the driver is compiled with
+-        alist support. In that case, __ALISTS__ is defined.
+-
+-HISTORY
+-        LDMud 3.3 made this an optional efun.
+-
+-SEE ALSO
+-        alists(LPC), mappings(LPC), insert_alist(E), assoc(E),
+-        transpose_array(E)
+-
+diff --git a/src/Makefile.in b/src/Makefile.in
+index b1596d2..a476a89 100644
+--- a/src/Makefile.in
++++ b/src/Makefile.in
+@@ -101,7 +101,7 @@ SRC = access_check.c actions.c array.c arraylist.c backend.c bitstrings.c \
+       interpret.c \
+       lex.c main.c mapping.c md5.c mempools.c mregex.c mstrings.c object.c \
+       otable.c\
+-      parser.c parse.c pkg-iksemel.c pkg-xml2.c pkg-idna.c \
++      parser.c parse.c pkg-alists.c pkg-iksemel.c pkg-xml2.c pkg-idna.c \
+       pkg-mccp.c pkg-mysql.c pkg-gcrypt.c pkg-json.c \
+       pkg-pgsql.c pkg-sqlite.c pkg-tls.c pkg-openssl.c pkg-gnutls.c \
+       port.c ptrtable.c \
+@@ -113,7 +113,7 @@ OBJ = access_check.o actions.o array.o arraylist.o backend.o bitstrings.o \
+       interpret.o \
+       lex.o main.o mapping.o md5.o mempools.o mregex.o mstrings.o object.o \
+       otable.o \
+-      parser.o parse.o pkg-iksemel.o pkg-xml2.o pkg-idna.o \
++      parser.o parse.o pkg-alists.o pkg-iksemel.o pkg-xml2.o pkg-idna.o \
+       pkg-mccp.o pkg-mysql.o pkg-gcrypt.o pkg-json.o \
+       pkg-pgsql.o pkg-sqlite.o pkg-tls.o pkg-openssl.o pkg-gnutls.o \
+       port.o ptrtable.o \
+@@ -428,6 +428,11 @@ parser.o : lang.c ../mudlib/sys/driver_hook.h i-eval_cost.h xalloc.h \
+     prolang.h my-alloca.h typedefs.h driver.h strfuns.h hash.h ptrtable.h \
+     sent.h bytecode.h port.h config.h bytecode_gen.h machine.h
+ 
++pkg-alists.o : i-svalue_cmp.h xalloc.h svalue.h simulate.h mstrings.h \
++    main.h interpret.h array.h my-alloca.h pkg-alists.h typedefs.h driver.h \
++    closure.h strfuns.h sent.h bytecode.h hash.h backend.h exec.h port.h \
++    config.h bytecode_gen.h types.h machine.h
++
+ pkg-gcrypt.o : ../mudlib/sys/tls.h pkg-gcrypt.h xalloc.h typedefs.h \
+     simulate.h main.h driver.h svalue.h strfuns.h sent.h bytecode.h port.h \
+     config.h bytecode_gen.h machine.h
+diff --git a/src/array.c b/src/array.c
+index 274012c..ec78856 100644
+--- a/src/array.c
++++ b/src/array.c
+@@ -331,6 +331,42 @@ free_empty_vector (vector_t *p)
+ }
+ 
+ /*-------------------------------------------------------------------------*/
++#ifdef USE_ALISTS
++static INLINE vector_t *
++i_shrink_array (vector_t *p, mp_int n)
++
++/* Create and return a new array containing just the first <n> elements
++ * of <p>. <p> itself is freed (and thus possibly deallocated).
++ * This function is only needed if alists are used.
++ */
++
++{
++    vector_t *res;
++
++    if (p->ref == 1 && VEC_SIZE(p) == n)
++        return p;
++        /* This case seems to happen often enough to justify
++         * the shortcut
++         */
++
++    if (n)
++    {
++        res = slice_array(p, 0, n-1);
++    }
++    else
++    {
++        res = ref_array(&null_vector);
++    }
++    free_array(p);
++    return res;
++}
++
++vector_t * shrink_array (vector_t *p, mp_int n) { return i_shrink_array(p, n); }
++
++#define shrink_array(p,n) i_shrink_array(p,n)
++#endif
++
++/*-------------------------------------------------------------------------*/
+ void
+ set_vector_user (vector_t *p, object_t *owner)
+ 
+diff --git a/src/array.h b/src/array.h
+index 4d27e72..6d93cff 100644
+--- a/src/array.h
++++ b/src/array.h
+@@ -109,6 +109,10 @@ extern svalue_t *v_unique_array(svalue_t *sp, int num_arg);
+ extern void set_vector_user(vector_t *p, object_t *owner);
+ extern long total_array_size(void);
+ 
++#ifdef USE_ALISTS
++extern vector_t * shrink_array (vector_t *p, mp_int n);
++#endif
++
+ #if defined(GC_SUPPORT)
+ extern void clear_array_size (void);
+ extern void count_array_size (vector_t *vec);
+diff --git a/src/autoconf/configure.in b/src/autoconf/configure.in
+index d2b845b..3035388 100644
+--- a/src/autoconf/configure.in
++++ b/src/autoconf/configure.in
+@@ -216,6 +216,7 @@ AC_MY_ARG_ENABLE(strict-euids,no,,[Enforce euids for loading objects])
+ AC_MY_ARG_ENABLE(filename-spaces,no,,[Allow space characters in filenames])
+ AC_MY_ARG_ENABLE(share-variables,no,,[Enable clone initialization from blueprint variable values])
+ AC_MY_ARG_ENABLE(use-ipv6,no,,[Enables support for IPv6])
++AC_MY_ARG_ENABLE(use-alists,no,,[Enables alist support])
+ AC_MY_ARG_ENABLE(use-mccp,no,,[Enables MCCP support])
+ AC_MY_ARG_ENABLE(use-mysql,no,,[Enables mySQL support])
+ AC_MY_ARG_ENABLE(use-pgsql,no,,[Enables PostgreSQL support])
+@@ -492,6 +493,7 @@ AC_CDEF_FROM_ENABLE(compat_mode)
+ AC_CDEF_FROM_ENABLE(strict_euids)
+ AC_CDEF_FROM_ENABLE(filename_spaces)
+ AC_CDEF_FROM_ENABLE(share_variables)
++AC_CDEF_FROM_ENABLE(use_alists)
+ AC_CDEF_FROM_ENABLE(use_mccp)
+ AC_CDEF_FROM_ENABLE(use_ipv6)
+ AC_CDEF_FROM_ENABLE(use_deprecated)
+@@ -2742,6 +2744,7 @@ AC_SUBST(cdef_use_pgsql)
+ AC_SUBST(cdef_use_sqlite)
+ AC_SUBST(cdef_use_json)
+ AC_SUBST(cdef_use_xml)
++AC_SUBST(cdef_use_alists)
+ AC_SUBST(cdef_use_mccp)
+ AC_SUBST(cdef_use_pcre)
+ AC_SUBST(cdef_use_deprecated)
+diff --git a/src/config.h.in b/src/config.h.in
+index bd3c9b5..324ec88 100644
+--- a/src/config.h.in
++++ b/src/config.h.in
+@@ -361,6 +361,10 @@
+  */
+ @cdef_use_json@ USE_JSON
+ 
++/* Define this if you want alist support.
++ */
++@cdef_use_alists@ USE_ALISTS
++
+ /* Define this if you want PCRE instead of traditional regexps.
+  */
+ @cdef_use_pcre@ USE_PCRE
+diff --git a/src/func_spec b/src/func_spec
+index 3ac29f6..2cb8ff9 100644
+--- a/src/func_spec
++++ b/src/func_spec
+@@ -648,6 +648,16 @@ string  creator F_GETUID (object);
+ 
+         /* --- Packages --- */
+ 
++#ifdef USE_ALISTS
++
++mixed   assoc(mixed, mixed *, mixed|void, mixed|void);
++mixed   insert_alist(mixed, mixed, ...);
++mixed  *intersect_alist(mixed *,mixed *);
++mixed  *order_alist(mixed *, void|mixed *, ...);
++
++#endif /* USE_ALISTS */
++
++
+ #ifdef USE_MCCP
+ 
+ mixed   query_mccp(object default: F_THIS_PLAYER);
+diff --git a/src/lex.c b/src/lex.c
+index c0cbdbf..da3421d 100644
+--- a/src/lex.c
++++ b/src/lex.c
+@@ -821,6 +821,9 @@ init_lexer(void)
+ #ifdef USE_JSON
+     add_permanent_define("__JSON__", -1, string_copy("1"), MY_FALSE);
+ #endif
++#ifdef USE_ALISTS
++    add_permanent_define("__ALISTS__", -1, string_copy("1"), MY_FALSE);
++#endif
+ #ifdef HAS_PCRE
+     add_permanent_define("__PCRE__", -1, string_copy("1"), MY_FALSE);
+ #endif
+diff --git a/src/main.c b/src/main.c
+index 04e9351..0063531 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1962,6 +1962,9 @@ options (void)
+ #ifdef USE_SQLITE
+                               , "SQLite3 supported\n"
+ #endif
++#ifdef USE_ALISTS
++                              , "Alists supported\n"
++#endif
+ #ifdef USE_TLS
+                               , "TLS supported ("
+ #  if defined(HAS_OPENSSL)
+diff --git a/src/pkg-alists.c b/src/pkg-alists.c
+new file mode 100644
+index 0000000..0cf3212
+--- /dev/null
++++ b/src/pkg-alists.c
+@@ -0,0 +1,619 @@
++/*---------------------------------------------------------------------------
++ * Alist handling functions.
++ *
++ *---------------------------------------------------------------------------
++ * One special application of arrays are alists: associative lists.
++ * Alists allow the association of data (single values or tuples) with
++ * a key value, which is then used to locate the data in the alist structure.
++ *
++ * Nowadays the same functionality is offered by mappings in a much more
++ * efficient manner, so this usage of alists is deprecated. However, for
++ * reasons explained below, alists can be used as an efficient way to
++ * construct lookup arrays.
++ *
++ * It might be historically interesting to know that the very first
++ * implementations of mappings were mere syntactic sugar for alists.
++ * Furthermore, the LPMud variant of alists offers only a part of the
++ * functionality of 'real' alists.
++ *
++ * Alists are implemented by a vector of vectors. A typical alist
++ * for (key:data1,...,dataN) tuples looks like this:
++ *
++ *   alist = ({ ({ key values })
++ *            , ({ data1 values })
++ *            , ...
++ *            , ({ dataN values })
++ *           })
++ *
++ * All subarrays are of the same length, and all the values for one tuple
++ * is found at the same index. For example, if the key for a tuple
++ * is found in alist[0][3], the data values are found in alist[1..N][3].
++ *
++ * The key value array is sorted to allow fast lookups, the sorting order
++ * uses the internal representation of the key values (which usually has
++ * nothing in common with the meaning of the key values). Three things
++ * however can be guaranteed:
++ *
++ *   - integer key values appear in rising order in the key array, though
++ *     not necessarily consecutive.
++ *   - removing one or more keys does not break the order of the
++ *     other keys.
++ *   - all strings used as key values are made shared strings.
++ *---------------------------------------------------------------------------
++ */
++
++#include "driver.h"
++#include "typedefs.h"
++
++#ifdef USE_ALISTS
++
++#include "pkg-alists.h"
++
++#include "my-alloca.h"
++#include <stddef.h>
++
++#include "array.h"
++#include "interpret.h" /* destructed_object_ref(), error functions */
++#include "main.h"
++#include "mstrings.h"
++#include "simulate.h"  /* errorf() */
++#include "svalue.h"
++#include "xalloc.h"
++
++#include "i-svalue_cmp.h"
++
++/*-------------------------------------------------------------------------*/
++static vector_t *
++intersect_ordered_arr (vector_t *a1, vector_t *a2)
++
++/* Compute the intersection of the two ordered arrays <a1> and <a2>.
++ *
++ * The result is a new sorted(!) vector with all elements, which are present
++ * in both input vectors.
++ * This function is called by f_intersect_alists().
++ */
++
++{
++    vector_t *a3;
++    mp_int d, l, i1, i2, a1s, a2s;
++
++    a1s = (mp_int)VEC_SIZE(a1);
++    a2s = (mp_int)VEC_SIZE(a2);
++    a3 = allocate_array( a1s < a2s ? a1s : a2s);
++    for (i1=i2=l=0; i1 < a1s && i2 < a2s; ) {
++        d = svalue_cmp(&a1->item[i1], &a2->item[i2]);
++        if (d<0)
++            i1++;
++        else if (d>0)
++            i2++;
++        else {
++            assign_svalue_no_free(&a3->item[l++], &a2->item[(i1++,i2++)] );
++        }
++    }
++    return shrink_array(a3, l);
++} /* intersect_ordered_arr() */
++
++/*-------------------------------------------------------------------------*/
++vector_t *
++order_alist (svalue_t *inlists, int listnum, Bool reuse)
++
++/* Order the alist <inlists> and return a new vector with it. The sorting
++ * order is the internal order defined by alist_cmp().
++ *
++ * <inlists> is a vector of <listnum> vectors:
++ *   <inlists> = ({ ({ keys }), ({ data1 }), ..., ({ data<listnum-1> }) })
++ *
++ * If <reuse> is true, the vectors of <inlists> are reused for the
++ * vectors of the result when possible, and their entries in <inlists> are
++ * set to T_INVALID.
++ *
++ * As a side effect, strings in the key vector are made shared, and
++ * destructed objects in key and data vectors are replaced by svalue 0s.
++ *
++ * This function is also called by the compiler for constant expressions.
++ */
++
++{
++    vector_t *outlist;   /* The result vector of vectors */
++    vector_t *v;         /* Aux vector pointer */
++    svalue_t *outlists;  /* Next element in outlist to fill in */
++    ptrdiff_t * sorted;  /* The vector elements in sorted order */
++    svalue_t *inpnt;     /* Pointer to the value to copy into the result */
++    mp_int keynum;       /* Number of keys */
++    int i, j;
++
++    keynum = (mp_int)VEC_SIZE(inlists[0].u.vec);
++
++    /* Get the sorting order */
++
++    sorted = get_array_order(inlists[0].u.vec);
++
++    /* Generate the result vectors from the sorting order.
++     */
++
++    outlist = allocate_array(listnum);
++    outlists = outlist->item;
++
++    /* Copy the elements from all inlist vectors into the outlist
++     * vectors.
++     *
++     * At the beginning of every loop v points to the vector to
++     * use as the next 'out' vector. It may be a re-used 'in' vector
++     * from the previous run.
++     */
++    v = allocate_array(keynum);
++    for (i = listnum; --i >= 0; ) {
++
++        svalue_t *outpnt; /* Next result value element to fill in */
++
++        /* Set the new array v as the next 'out' vector, and init outpnt
++         * and offs.
++         */
++        put_array(outlists + i, v);
++        outpnt = v->item;
++
++        v = inlists[i].u.vec; /* Next vector to fill if reusable */
++
++        /* Copy the elements.
++         * For a reusable 'in' vector, a simple memory copy is sufficient.
++         * For a new vector, a full assignment is due to keep the refcounters
++         * happy.
++         */
++        if (reuse && inlists[i].u.vec->ref == 1) {
++
++            if (i) /* not the last iteration */
++                inlists[i].type = T_INVALID;
++
++            for (j = keynum; --j >= 0; ) {
++                inpnt = inlists[i].u.vec->item + sorted[j];
++                if (destructed_object_ref(inpnt))
++                {
++                    free_svalue(inpnt);
++                    put_number(outpnt, 0);
++                    outpnt++;
++                } else {
++                    *outpnt++ = *inpnt;
++                }
++                inpnt->type = T_INVALID;
++            }
++
++        } else {
++
++            if (i) /* Not the last iteration: get new out-vector */
++                v = allocate_array(keynum);
++
++            for (j = keynum; --j >= 0; ) {
++                inpnt = inlists[i].u.vec->item + sorted[j];
++                if (destructed_object_ref(inpnt))
++                {
++                    put_number(outpnt, 0);
++                    outpnt++;
++                } else {
++                    assign_svalue_no_free(outpnt++, inpnt);
++                }
++            }
++        } /* if (reuse) */
++    } /* for (listnum) */
++
++    xfree(sorted);
++
++    return outlist;
++} /* order_alist() */
++
++/*-------------------------------------------------------------------------*/
++static svalue_t *
++insert_alist (svalue_t *key, svalue_t * /* TODO: bool */ key_data, vector_t *list)
++
++/* Implementation of efun insert_alist()
++ *
++ * The function can be used in two ways:
++ *
++ * 1. Insert/replace a (new) <key>:<keydata> tuple into the alist <list>.
++ *    <key> and <key_data> have to point to an array of svalues. The first
++ *    element is the key value, the following values the associated
++ *    data values. The function will read as many elements from the
++ *    array as necessary to fill the alist <list>.
++ *    Result is a fresh copy of the modified alist.
++ *
++ * 2. Lookup a <key> in the alist <list> and return its index. If the key
++ *    is not found, return  the position at which it would be inserted.
++ *    <key_data> must be NULL, <key> points to the svalue to be looked
++ *    up, and <list> points to an alist with at least the key vector.
++ *
++ * If <list> is no alist, the result can be wrong (case 2.) or not
++ * an alist either (case 1.).
++ *
++ * If the <key> is a string, it is made shared.
++ *
++ * TODO: Make the hidden flag 'key_data' a real flag.
++ */
++
++{
++    static svalue_t stmp; /* Result value */
++    mp_int i,j,ix;
++    mp_int keynum, list_size;  /* Number of keys, number of alist vectors */
++    int new_member;            /* Flag if a new tuple is given */
++
++    /* If key is a string, make it shared */
++    if (key->type == T_STRING && !mstr_tabled(key->u.str))
++    {
++        key->u.str = make_tabled(key->u.str);
++    }
++
++    keynum = (mp_int)VEC_SIZE(list->item[0].u.vec);
++
++    /* Locate the key */
++    ix = lookup_key(key, list->item[0].u.vec);
++
++    /* If its just a lookup: return the result.
++     */
++    if (key_data == NULL) {
++         put_number(&stmp, ix < 0 ? -ix-1 : ix);
++         return &stmp;
++    }
++
++    /* Prepare the result alist vector */
++    put_array(&stmp, allocate_array(list_size = (mp_int)VEC_SIZE(list)));
++
++    new_member = ix < 0;
++    if (new_member)
++        ix = -ix-1;
++
++    /* Loop over all key/data vectors in <list>, insert/replace the
++     * new value and put the new vector into <stmp>.
++     */
++    for (i = 0; i < list_size; i++) {
++        vector_t *vtmp;
++
++        if (new_member) {
++
++            svalue_t *pstmp = list->item[i].u.vec->item;
++
++            vtmp = allocate_array(keynum+1);
++            for (j=0; j < ix; j++) {
++               assign_svalue_no_free(&vtmp->item[j], pstmp++);
++            }
++            assign_svalue_no_free(&vtmp->item[ix], i ? &key_data[i] : key );
++            for (j = ix+1; j <= keynum; j++) {
++               assign_svalue_no_free(&vtmp->item[j], pstmp++);
++            }
++
++        } else {
++
++            vtmp = slice_array(list->item[i].u.vec, 0, keynum-1);
++            if (i)
++                assign_svalue(&vtmp->item[ix], &key_data[i]);
++                /* No need to assign the key value: it's already there. */
++
++        }
++
++        stmp.u.vec->item[i].type=T_POINTER;
++        stmp.u.vec->item[i].u.vec=vtmp;
++    }
++
++    /* Done */
++    return &stmp;
++} /* insert_alist() */
++
++/*=========================================================================*/
++
++/*                            EFUNS                                        */
++
++/*-------------------------------------------------------------------------*/
++svalue_t *
++v_insert_alist (svalue_t *sp, int num_arg)
++
++/* EFUN insert_alist()
++ *
++ *   mixed* insert_alist (mixed key, mixed data..., mixed * alist)
++ *   int    insert_alist (mixed key, mixed * keys)
++ *
++ * 1. Form: Alist Insertion
++ *
++ *   The <key> and all following <data> values are inserted
++ *   into the <alist>. If an entry for <key> already exists
++ *   in the list, just the data values are replaced. The number
++ *   of <data> values must match the number of data arrays
++ *   in the alist, naturally.
++ *
++ *   Result is the updated <alist>.
++ *
++ * 2. Form: Key Insertion
++ *
++ *   Insert the <key> into the (ordered) array of <keys>, so that
++ *   subsequent assoc()s can perform quick lookups. Result is the
++ *   index at which <key> was inserted (or already found).
++ *
++ *   CAVEAT: when working with string keys, the index might no longer
++ *     be valid after the next call to insert_alist().
++ */
++/* When the key list of an alist contains destructed objects
++   it is better not to free them till the next reordering by
++   order_alist to retain the alist property.
++ */
++
++{
++    int i;
++    vector_t *list;
++    long listsize;
++    size_t keynum;
++    svalue_t *key,*key_data,*ret;
++    static LOCAL_VEC1(insert_alist_vec, T_NUMBER);
++      /* Mock-alist for the insert_alist() key-insertion form.
++       */
++
++    if (sp->type != T_POINTER)
++        vefun_arg_error(num_arg, T_POINTER, sp->type, sp);
++
++    /* Make up an alist if only a key-insertion is required */
++    if ( !(listsize = (long)VEC_SIZE(sp->u.vec))
++     ||  sp->u.vec->item[0].type != T_POINTER )
++    {
++        list = &insert_alist_vec.v;
++        *list->item = *sp;
++        listsize = 1;
++    }
++    else
++        list = sp->u.vec;
++
++    /* Check the validity of the alist */
++    keynum = VEC_SIZE(list->item[0].u.vec);
++    for (i = 1; i < listsize; i++)
++    {
++        if (list->item[i].type != T_POINTER
++         || (size_t)VEC_SIZE(list->item[i].u.vec) != keynum)
++        {
++            errorf("Type or size mismatch of the data arrays.\n");
++            /* NOTREACHED */
++            return sp;
++        }
++    }
++
++    /* Get and test the data to insert */
++    if (num_arg == 2)
++    {
++        if (sp[-1].type != T_POINTER)
++        {
++            key_data = NULL;
++            key = sp-1;
++        }
++        else
++        {
++            if (VEC_SIZE(sp[-1].u.vec) != listsize)
++            {
++                errorf("Size mismatch of the data arrays: "
++                      "vec size %ld, list size %ld.\n"
++                     , (long)VEC_SIZE(sp[-1].u.vec), (long)listsize
++                     );
++                /* NOTREACHED */
++                return sp;
++            }
++            key_data = key = sp[-1].u.vec->item;
++        }
++    }
++    else
++    {
++        if (num_arg - 1 != listsize)
++        {
++            errorf("Not enough data given: %ld arguments, %ld listsize.\n"
++                 , (long)num_arg - 1, (long)listsize);
++            /* NOTREACHED */
++            return sp;
++        }
++        key_data = key = sp-num_arg+1;
++    }
++
++    /* Do the insertion */
++    ret = insert_alist(key,key_data,list);
++    sp = pop_n_elems(num_arg, sp);
++    sp++;
++    *sp = *ret;
++
++    return sp;
++} /* v_insert_alist() */
++
++/*-------------------------------------------------------------------------*/
++svalue_t *
++v_assoc (svalue_t *sp, int num_arg)
++
++/* EFUN assoc()
++ *
++ *     int   assoc (mixed key, mixed *keys)
++ *     mixed assoc (mixed key, mixed *alist [, mixed fail] )
++ *     mixed assoc (mixed key, mixed *keys, mixed *data [, mixed fail])
++ *
++ * Search for <key> in the <alist> resp. in the <keys>.
++ *
++ * When the key list of an alist contains destructed objects
++ * it is better not to free them till the next reordering by
++ * order_alist to retain the alist property.
++ */
++
++{
++    svalue_t *args;
++    vector_t *keys,*data;
++    svalue_t *fail_val;
++    int ix;
++
++    args = sp -num_arg +1;
++
++    /* Analyse the arguments */
++    if ( !VEC_SIZE(args[1].u.vec)
++     ||  args[1].u.vec->item[0].type != T_POINTER )
++    {
++        keys = args[1].u.vec;
++        if (num_arg == 2)
++        {
++            data = NULL;
++        }
++        else
++        {
++            if (args[2].type != T_POINTER
++             || VEC_SIZE(args[2].u.vec) != VEC_SIZE(keys))
++            {
++                errorf("Number of values in key and data arrays differ.\n");
++                /* NOTREACHED */
++                return sp;
++            }
++            data = args[2].u.vec;
++        }
++        if (num_arg == 4)
++        {
++            fail_val = &args[3];
++        }
++        else
++        {
++            fail_val = &const0;
++        }
++    }
++    else
++    {
++        keys = args[1].u.vec->item[0].u.vec;
++        if (VEC_SIZE(args[1].u.vec) > 1)
++        {
++            if (args[1].u.vec->item[1].type != T_POINTER
++             || VEC_SIZE(args[1].u.vec->item[1].u.vec) != VEC_SIZE(keys))
++            {
++                errorf("Number of values in key and data arrays differ.\n");
++                /* NOTREACHED */
++                return sp;
++            }
++            data = args[1].u.vec->item[1].u.vec;
++        }
++        else
++        {
++            data = NULL;
++        }
++
++        if (num_arg == 3) fail_val = &args[2];
++        else if (num_arg == 2) fail_val = &const0;
++        else
++        {
++            errorf("too many args to efun assoc\n");
++            /* NOTREACHED */
++            return sp;
++        }
++    }
++
++    /* Call lookup_key() and push the result */
++    ix = lookup_key(&args[0],keys);
++    if (data == NULL)
++    {
++        sp = pop_n_elems(num_arg, sp);
++        push_number(sp, ix < 0 ? -1 : ix);
++    }
++    else
++    {
++        assign_svalue(args
++                     , ix < 0
++                       ? fail_val
++                       : (destructed_object_ref(&data->item[ix])
++                         ? &const0
++                         : &data->item[ix])
++                     );
++        sp = pop_n_elems(num_arg-1, sp);
++    }
++
++    return sp;
++} /* v_assoc() */
++
++/*-------------------------------------------------------------------------*/
++svalue_t *
++f_intersect_alist (svalue_t *sp)
++
++/* EFUN intersect_alist()
++ *
++ *   mixed * intersect_alist (mixed * list1, mixed * list2)
++ *
++ * Does a fast set intersection on alist key vectors (NOT on full
++ * alists!).
++ *
++ * The result is a new sorted(!) vector with all elements, which are present
++ * in both input vectors.
++ *
++ * The operator '&' does set intersection on arrays in
++ * general.
++ *
++ * TODO: Maybe rename the efun.
++ */
++
++{
++    vector_t *rc;
++
++    rc = intersect_ordered_arr(sp[-1].u.vec, sp->u.vec);
++
++    free_svalue(sp--);
++    free_array(sp->u.vec);
++    sp->u.vec = rc;
++
++    return sp;
++} /* f_intersect_alist() */
++
++/*-------------------------------------------------------------------------*/
++svalue_t *
++v_order_alist (svalue_t *sp, int num_arg)
++
++/* EFUN order_alist()
++ *
++ *   mixed *order_alist(mixed *keys, mixed *|void data, ...)
++ *
++ * Creates an alist.
++ *
++ * Either takes an array containing keys, and others containing
++ * the associated data, where all arrays are to be of the same
++ * length, or takes a single array that contains as first member
++ * the array of keys and has an arbitrary number of other members
++ * containing data, each of wich has to be of the same length as
++ * the key array. Returns an array holding the sorted key array
++ * and the data arrays; the same permutation that is applied to
++ * the key array is applied to all data arrays.
++ */
++
++{
++    int i;
++    svalue_t *args;
++    vector_t *list;
++    long listsize;
++    Bool reuse;
++    size_t keynum;
++
++    args = sp-num_arg+1;
++
++    /* Get the key array to order */
++    if (num_arg == 1
++      && ((list = args->u.vec), (listsize = (long)VEC_SIZE(list)))
++      && list->item[0].type == T_POINTER)
++    {
++        args     = list->item;
++        reuse = (list->ref == 1);
++    }
++    else
++    {
++        listsize = num_arg;
++        reuse = MY_TRUE;
++    }
++    keynum = VEC_SIZE(args[0].u.vec);
++
++    /* Get the data arrays to order */
++    for (i = 0; i < listsize; i++)
++    {
++        if (args[i].type != T_POINTER
++         || (size_t)VEC_SIZE(args[i].u.vec) != keynum)
++        {
++            errorf("bad data array %d in call to order_alist\n",i);
++        }
++    }
++
++    /* Create the alist */
++    list = order_alist(args, listsize, reuse);
++    sp = pop_n_elems(num_arg, sp);
++    sp++;
++    put_array(sp, list);
++
++    return sp;
++} /* v_order_alist() */
++
++#endif /* USE_ALISTS */
++
++/***************************************************************************/
++
+diff --git a/src/pkg-alists.h b/src/pkg-alists.h
+new file mode 100644
+index 0000000..5d1cb48
+--- /dev/null
++++ b/src/pkg-alists.h
+@@ -0,0 +1,17 @@
++#ifndef PKG_ALISTS_H__
++#define PKG_ALISTS_H__ 1
++
++#include "driver.h"
++#include "typedefs.h"
++
++#ifdef USE_ALISTS
++
++extern vector_t *order_alist (svalue_t *inlists, int listnum, Bool reuse);
++extern svalue_t *v_assoc(svalue_t *sp, int num_arg);
++extern svalue_t *f_intersect_alist(svalue_t *sp);
++extern svalue_t *v_insert_alist(svalue_t *sp, int num_arg);
++extern svalue_t *v_order_alist(svalue_t *sp, int num_arg);
++
++#endif /* USE_ALISTS */
++
++#endif /* PKG_ALISTS_H__ */
+-- 
+2.3.0
+
